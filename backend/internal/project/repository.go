@@ -33,17 +33,29 @@ func scanProject(row interface{ Scan(dest ...any) error }) (*models.Project, err
 	return &p, nil
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID) ([]models.Project, error) {
+func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit, offset int) ([]models.Project, int, error) {
+	countQuery := `
+		SELECT COUNT(*)
+		FROM projects p
+		WHERE p.owner_id = $1
+		   OR p.id IN (SELECT DISTINCT project_id FROM tasks WHERE assignee_id = $1)`
+
+	var total int
+	if err := r.db.QueryRowContext(ctx, countQuery, userID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
 	query := `
 		SELECT p.id, p.name, p.description, p.owner_id, p.created_at
 		FROM projects p
 		WHERE p.owner_id = $1
 		   OR p.id IN (SELECT DISTINCT project_id FROM tasks WHERE assignee_id = $1)
-		ORDER BY p.created_at DESC`
+		ORDER BY p.created_at DESC
+		LIMIT $2 OFFSET $3`
 
-	rows, err := r.db.QueryContext(ctx, query, userID)
+	rows, err := r.db.QueryContext(ctx, query, userID, limit, offset)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -51,11 +63,11 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID) ([]models.Proje
 	for rows.Next() {
 		p, err := scanProject(rows)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		projects = append(projects, *p)
 	}
-	return projects, rows.Err()
+	return projects, total, rows.Err()
 }
 
 func (r *Repository) Create(ctx context.Context, p *models.Project) error {

@@ -21,6 +21,7 @@ func RequestLogger(next http.Handler) http.Handler {
 			"status", ww.Status(),
 			"bytes", ww.BytesWritten(),
 			"duration", time.Since(start).String(),
+			"request_id", GetRequestID(r),
 		)
 	})
 }

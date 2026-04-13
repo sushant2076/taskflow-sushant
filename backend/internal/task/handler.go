@@ -12,6 +12,7 @@ import (
 
 	"taskflow/internal/middleware"
 	"taskflow/internal/models"
+	"taskflow/internal/pagination"
 	"taskflow/internal/response"
 )
 
@@ -41,8 +42,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 	status := r.URL.Query().Get("status")
 	assignee := r.URL.Query().Get("assignee")
+	pg := pagination.Parse(r)
 
-	tasks, err := h.service.List(r.Context(), projectID, status, assignee)
+	tasks, total, err := h.service.List(r.Context(), projectID, status, assignee, pg.Limit, pg.Offset)
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "not found")
@@ -57,6 +59,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		tasks = []models.Task{}
 	}
 
+	pagination.SetHeaders(w, total, pg.Page, pg.Limit)
 	response.JSON(w, http.StatusOK, map[string]any{"tasks": tasks})
 }
 

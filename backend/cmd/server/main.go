@@ -61,6 +61,7 @@ func main() {
 
 	// Router
 	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
 	r.Use(middleware.RequestLogger)
 	r.Use(chiMiddleware.Recoverer)
 
@@ -71,9 +72,13 @@ func main() {
 		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
 	})
 
-	// Public routes
-	r.Post("/auth/register", authHandler.Register)
-	r.Post("/auth/login", authHandler.Login)
+	// Public routes (rate-limited: 5 requests/second, burst of 10)
+	authLimiter := middleware.NewRateLimiter(5, 10)
+	r.Group(func(r chi.Router) {
+		r.Use(authLimiter.Limit)
+		r.Post("/auth/register", authHandler.Register)
+		r.Post("/auth/login", authHandler.Login)
+	})
 
 	// Protected routes
 	r.Group(func(r chi.Router) {
@@ -82,6 +87,7 @@ func main() {
 		r.Get("/projects", projectHandler.List)
 		r.Post("/projects", projectHandler.Create)
 		r.Get("/projects/{id}", projectHandler.GetByID)
+		r.Get("/projects/{id}/stats", projectHandler.Stats)
 		r.Patch("/projects/{id}", projectHandler.Update)
 		r.Delete("/projects/{id}", projectHandler.Delete)
 

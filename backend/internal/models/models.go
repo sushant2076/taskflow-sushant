@@ -46,6 +46,18 @@ type Task struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
+type ProjectStats struct {
+	TotalTasks int              `json:"total_tasks"`
+	ByStatus   map[string]int   `json:"by_status"`
+	ByAssignee []AssigneeStats  `json:"by_assignee"`
+}
+
+type AssigneeStats struct {
+	AssigneeID *uuid.UUID `json:"assignee_id"`
+	Name       *string    `json:"name"`
+	Count      int        `json:"count"`
+}
+
 type JWTClaims struct {
 	UserID uuid.UUID `json:"user_id"`
 	Email  string    `json:"email"`

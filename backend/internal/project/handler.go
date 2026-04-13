@@ -12,11 +12,13 @@ import (
 
 	"taskflow/internal/middleware"
 	"taskflow/internal/models"
+	"taskflow/internal/pagination"
 	"taskflow/internal/response"
 )
 
 type TaskLister interface {
-	List(ctx context.Context, projectID uuid.UUID, status, assignee string) ([]models.Task, error)
+	List(ctx context.Context, projectID uuid.UUID, status, assignee string, limit, offset int) ([]models.Task, int, error)
+	Stats(ctx context.Context, projectID uuid.UUID) (*models.ProjectStats, error)
 }
 
 type Handler struct {
@@ -35,8 +37,9 @@ type createProjectRequest struct {
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r)
+	pg := pagination.Parse(r)
 
-	projects, err := h.service.List(r.Context(), userID)
+	projects, total, err := h.service.List(r.Context(), userID, pg.Limit, pg.Offset)
 	if err != nil {
 		slog.Error("failed to list projects", "error", err)
 		response.Error(w, http.StatusInternalServerError, "internal error")
@@ -47,6 +50,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		projects = []models.Project{}
 	}
 
+	pagination.SetHeaders(w, total, pg.Page, pg.Limit)
 	response.JSON(w, http.StatusOK, map[string]any{"projects": projects})
 }
 
@@ -92,7 +96,7 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks, err := h.taskLister.List(r.Context(), id, "", "")
+	tasks, _, err := h.taskLister.List(r.Context(), id, "", "", 1000, 0)
 	if err != nil && !errors.Is(err, models.ErrNotFound) {
 		slog.Error("failed to list project tasks", "error", err)
 		response.Error(w, http.StatusInternalServerError, "internal error")
@@ -112,6 +116,27 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	stats, err := h.taskLister.Stats(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			response.Error(w, http.StatusNotFound, "not found")
+			return
+		}
+		slog.Error("failed to get project stats", "error", err)
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, stats)
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
