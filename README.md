@@ -70,7 +70,7 @@ Password: password123
 
 ## API Reference
 
-A Bruno API collection is included in `api-collection/` with requests for every endpoint. Open it with [Bruno](https://www.usebruno.com/).
+A Postman API collection is included in `postman/` with requests for every endpoint. 
 
 ### Authentication
 

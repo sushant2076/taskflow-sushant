@@ -24,3 +24,5 @@ Thumbs.db
 # Docs & specs (local only)
 /docs
 requirements.md
+
+api-collection/
