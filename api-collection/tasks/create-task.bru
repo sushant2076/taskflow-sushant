@@ -1,0 +1,29 @@
+meta {
+  name: Create Task
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/projects/b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a22/tasks
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "title": "New Task",
+    "description": "A test task",
+    "priority": "high",
+    "assignee_id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    "due_date": "2026-05-01"
+  }
+}

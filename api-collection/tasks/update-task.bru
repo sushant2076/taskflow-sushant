@@ -1,0 +1,26 @@
+meta {
+  name: Update Task
+  type: http
+  seq: 3
+}
+
+patch {
+  url: {{baseUrl}}/tasks/c1eebc99-9c0b-4ef8-bb6d-6bb9bd380a31
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "status": "in_progress",
+    "priority": "medium"
+  }
+}
