@@ -30,12 +30,16 @@ TaskFlow allows users to register, log in, create projects, and manage tasks wit
 
 **Separate migrate and seed containers** — Migrations run in a dedicated container that exits after completion. The API server only starts after migrations and seeding are done. This ensures a clean startup sequence.
 
+**In-memory rate limiting** — Auth endpoints use a token bucket rate limiter (5 req/s, burst of 10) per IP. In-memory is appropriate for a single-instance deployment; a distributed setup would use Redis.
+
+**Request ID middleware** — Every request gets a `X-Request-ID` header (generated or echoed from the client). This ID is included in all structured log entries for end-to-end tracing.
+
 ### What I intentionally left out
 
-- No request rate limiting (would add for production)
-- No request ID / correlation middleware (would add for observability)
-- No pagination on list endpoints (documented as TODO)
 - No CORS configuration (not needed without a frontend)
+- No input sanitization beyond validation (e.g., max length on strings)
+- No database connection pooling tuning based on load testing
+- No CI/CD pipeline with linting, tests, and Docker image publishing
 
 ## Running Locally
 
@@ -59,6 +63,23 @@ To run migrations manually:
 docker compose run --rm migrate -path /migrations -database "$DATABASE_URL" up
 ```
 
+## Running Tests
+
+Integration tests run against a real database inside Docker. No local Go installation required.
+
+```bash
+./scripts/test.sh
+```
+
+This spins up a separate test stack (`docker-compose.test.yml`), runs the full suite, and tears everything down. Tests cover:
+
+- Auth flow (register, login, validation, duplicate detection)
+- Auth middleware (missing/invalid tokens)
+- Request ID propagation
+- Project CRUD with pagination
+- Project stats endpoint
+- Task permission checks (owner vs non-owner)
+
 ## Test Credentials
 
 Seed data is loaded automatically. Use these credentials to log in:
@@ -70,9 +91,11 @@ Password: password123
 
 ## API Reference
 
-A Postman API collection is included in `postman/` with requests for every endpoint. 
+A Postman collection is included in `postman/` with requests for every endpoint.
 
 ### Authentication
+
+Auth endpoints are rate-limited to 5 requests/second per IP (burst of 10).
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -86,6 +109,7 @@ A Postman API collection is included in `postman/` with requests for every endpo
 | GET | `/projects` | List projects (owned or assigned) |
 | POST | `/projects` | Create project |
 | GET | `/projects/:id` | Get project with tasks |
+| GET | `/projects/:id/stats` | Task counts by status and assignee |
 | PATCH | `/projects/:id` | Update project (owner only) |
 | DELETE | `/projects/:id` | Delete project (owner only) |
 
@@ -100,6 +124,36 @@ A Postman API collection is included in `postman/` with requests for every endpo
 
 All endpoints return `Content-Type: application/json`. Auth endpoints are public; all others require `Authorization: Bearer <token>`.
 
+### Pagination
+
+List endpoints (`GET /projects`, `GET /projects/:id/tasks`) support pagination:
+
+```
+?page=1&limit=20
+```
+
+- `page` defaults to 1, `limit` defaults to 20 (max 100)
+- Response headers: `X-Total-Count`, `X-Page`, `X-Per-Page`, `X-Total-Pages`
+
+### Project Stats
+
+`GET /projects/:id/stats` returns:
+
+```json
+{
+  "total_tasks": 3,
+  "by_status": { "todo": 1, "in_progress": 1, "done": 1 },
+  "by_assignee": [
+    { "assignee_id": "uuid", "name": "Test User", "count": 2 },
+    { "assignee_id": null, "name": null, "count": 1 }
+  ]
+}
+```
+
+### Request Tracing
+
+Every response includes an `X-Request-ID` header. Send your own `X-Request-ID` to correlate requests across systems, or let the server generate one. The ID appears in all structured log entries.
+
 ### Error Responses
 
 | Status | Body |
@@ -108,14 +162,4 @@ All endpoints return `Content-Type: application/json`. Auth endpoints are public
 | 401 | `{"error": "unauthorized"}` |
 | 403 | `{"error": "forbidden"}` |
 | 404 | `{"error": "not found"}` |
-
-## What I'd Do With More Time
-
-- **Pagination** on list endpoints (`?page=&limit=`) with total count in response headers
-- **GET /projects/:id/stats** endpoint returning task counts grouped by status and assignee
-- **Integration tests** — at least covering auth flow, project CRUD, and task permission checks
-- **Rate limiting** on auth endpoints to prevent brute-force attacks
-- **Request ID middleware** for distributed tracing and log correlation
-- **Input sanitization** and stricter validation (e.g., max length on strings)
-- **Database connection pooling tuning** based on load testing
-- **CI/CD pipeline** with linting, tests, and Docker image publishing
+| 429 | `{"error": "too many requests"}` |

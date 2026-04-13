@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: taskflow
+      POSTGRES_PASSWORD: taskflow
+      POSTGRES_DB: taskflow_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskflow -d taskflow_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: migrate/migrate:v4.17.0
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/migrations:/migrations
+    command: ["-path", "/migrations", "-database", "postgres://taskflow:taskflow@db:5432/taskflow_test?sslmode=disable", "up"]
+
+  seed:
+    image: postgres:16-alpine
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ./backend/seed:/seed
+    environment:
+      PGPASSWORD: taskflow
+    entrypoint: >
+      sh -c "psql -h db -U taskflow -d taskflow_test -f /seed/seed.sql"
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://taskflow:taskflow@db:5432/taskflow_test?sslmode=disable
+      JWT_SECRET: test-secret-key-at-least-32-chars-long
+      PORT: "8080"
+      BCRYPT_COST: "4"
+  test:
+    image: golang:1.23-alpine
+    depends_on:
+      api:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+    working_dir: /app
+    environment:
+      API_URL: http://api:8080
+    command: go test -v -count=1 ./tests/...

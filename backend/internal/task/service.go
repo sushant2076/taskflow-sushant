@@ -29,7 +29,18 @@ func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) List(ctx context.Context, projectID uuid.UUID, status, assignee string) ([]models.Task, error) {
+func (s *Service) List(ctx context.Context, projectID uuid.UUID, status, assignee string, limit, offset int) ([]models.Task, int, error) {
+	exists, err := s.repo.ProjectExists(ctx, projectID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if !exists {
+		return nil, 0, models.ErrNotFound
+	}
+	return s.repo.List(ctx, projectID, status, assignee, limit, offset)
+}
+
+func (s *Service) Stats(ctx context.Context, projectID uuid.UUID) (*models.ProjectStats, error) {
 	exists, err := s.repo.ProjectExists(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -37,7 +48,30 @@ func (s *Service) List(ctx context.Context, projectID uuid.UUID, status, assigne
 	if !exists {
 		return nil, models.ErrNotFound
 	}
-	return s.repo.List(ctx, projectID, status, assignee)
+
+	byStatus, err := s.repo.CountByStatus(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	byAssignee, err := s.repo.CountByAssignee(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if byAssignee == nil {
+		byAssignee = []models.AssigneeStats{}
+	}
+
+	total := 0
+	for _, c := range byStatus {
+		total += c
+	}
+
+	return &models.ProjectStats{
+		TotalTasks: total,
+		ByStatus:   byStatus,
+		ByAssignee: byAssignee,
+	}, nil
 }
 
 func (s *Service) Create(ctx context.Context, projectID, userID uuid.UUID, title string, description *string, status, priority *string, assigneeID *uuid.UUID, dueDate *string) (*models.Task, error) {

@@ -22,8 +22,8 @@ func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]models.Project, error) {
-	return s.repo.List(ctx, userID)
+func (s *Service) List(ctx context.Context, userID uuid.UUID, limit, offset int) ([]models.Project, int, error) {
+	return s.repo.List(ctx, userID, limit, offset)
 }
 
 func (s *Service) Create(ctx context.Context, userID uuid.UUID, name string, description *string) (*models.Project, error) {

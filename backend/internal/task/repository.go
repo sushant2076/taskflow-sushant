@@ -48,32 +48,42 @@ func scanTask(row interface{ Scan(dest ...any) error }) (*models.Task, error) {
 	return &t, nil
 }
 
-func (r *Repository) List(ctx context.Context, projectID uuid.UUID, status, assignee string) ([]models.Task, error) {
-	query := `SELECT id, title, description, status, priority, project_id,
-	                 assignee_id, created_by, due_date, created_at, updated_at
-	          FROM tasks WHERE project_id = $1`
+func (r *Repository) List(ctx context.Context, projectID uuid.UUID, status, assignee string, limit, offset int) ([]models.Task, int, error) {
+	whereClause := "WHERE project_id = $1"
 	args := []any{projectID}
 	argIdx := 2
 
 	if status != "" {
-		query += fmt.Sprintf(" AND status = $%d", argIdx)
+		whereClause += fmt.Sprintf(" AND status = $%d", argIdx)
 		args = append(args, status)
 		argIdx++
 	}
 	if assignee != "" {
 		assigneeID, err := uuid.Parse(assignee)
 		if err == nil {
-			query += fmt.Sprintf(" AND assignee_id = $%d", argIdx)
+			whereClause += fmt.Sprintf(" AND assignee_id = $%d", argIdx)
 			args = append(args, assigneeID)
 			argIdx++
 		}
 	}
 
-	query += " ORDER BY created_at DESC"
+	var total int
+	countQuery := "SELECT COUNT(*) FROM tasks " + whereClause
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := fmt.Sprintf(
+		`SELECT id, title, description, status, priority, project_id,
+		        assignee_id, created_by, due_date, created_at, updated_at
+		 FROM tasks %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`,
+		whereClause, argIdx, argIdx+1,
+	)
+	args = append(args, limit, offset)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -81,11 +91,11 @@ func (r *Repository) List(ctx context.Context, projectID uuid.UUID, status, assi
 	for rows.Next() {
 		t, err := scanTask(rows)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		tasks = append(tasks, *t)
 	}
-	return tasks, rows.Err()
+	return tasks, total, rows.Err()
 }
 
 func (r *Repository) Create(ctx context.Context, t *models.Task) error {
@@ -215,6 +225,58 @@ func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 		return models.ErrNotFound
 	}
 	return nil
+}
+
+func (r *Repository) CountByStatus(ctx context.Context, projectID uuid.UUID) (map[string]int, error) {
+	query := `SELECT status, COUNT(*) FROM tasks WHERE project_id = $1 GROUP BY status`
+	rows, err := r.db.QueryContext(ctx, query, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := map[string]int{}
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, err
+		}
+		counts[status] = count
+	}
+	return counts, rows.Err()
+}
+
+func (r *Repository) CountByAssignee(ctx context.Context, projectID uuid.UUID) ([]models.AssigneeStats, error) {
+	query := `SELECT t.assignee_id, u.name, COUNT(*)
+	          FROM tasks t
+	          LEFT JOIN users u ON u.id = t.assignee_id
+	          WHERE t.project_id = $1
+	          GROUP BY t.assignee_id, u.name
+	          ORDER BY COUNT(*) DESC`
+	rows, err := r.db.QueryContext(ctx, query, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []models.AssigneeStats
+	for rows.Next() {
+		var s models.AssigneeStats
+		var assigneeID uuid.NullUUID
+		var name sql.NullString
+		if err := rows.Scan(&assigneeID, &name, &s.Count); err != nil {
+			return nil, err
+		}
+		if assigneeID.Valid {
+			s.AssigneeID = &assigneeID.UUID
+		}
+		if name.Valid {
+			s.Name = &name.String
+		}
+		stats = append(stats, s)
+	}
+	return stats, rows.Err()
 }
 
 func (r *Repository) ProjectExists(ctx context.Context, projectID uuid.UUID) (bool, error) {

@@ -119,9 +119,19 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseUrl}}/projects",
+							"raw": "{{baseUrl}}/projects?page=1&limit=20",
 							"host": ["{{baseUrl}}"],
-							"path": ["projects"]
+							"path": ["projects"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
 						}
 					}
 				},
@@ -178,6 +188,23 @@
 							"raw": "{{baseUrl}}/projects/{{projectId}}",
 							"host": ["{{baseUrl}}"],
 							"path": ["projects", "{{projectId}}"]
+						}
+					}
+				},
+				{
+					"name": "Get Project Stats",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/projects/{{projectId}}/stats",
+							"host": ["{{baseUrl}}"],
+							"path": ["projects", "{{projectId}}", "stats"]
 						}
 					}
 				},
@@ -240,9 +267,19 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseUrl}}/projects/{{projectId}}/tasks",
+							"raw": "{{baseUrl}}/projects/{{projectId}}/tasks?page=1&limit=20",
 							"host": ["{{baseUrl}}"],
-							"path": ["projects", "{{projectId}}", "tasks"]
+							"path": ["projects", "{{projectId}}", "tasks"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
 						}
 					}
 				},
